@@ -344,12 +344,12 @@ df
     </tr>
   </tbody>
 </table>
-<p>38501 rows × 55 columns</p>
+<p>38501 rows × 53 columns</p>
 </div>
 
 
 
-As you can see, we have over 38,000 rows, each with 54 feature columns and 1 target column:
+As you can see, we have over 38,000 rows, each with 52 feature columns and 1 target column:
 
 * `Elevation`: Elevation in meters
 * `Aspect`: Aspect in degrees azimuth
@@ -361,8 +361,8 @@ As you can see, we have over 38,000 rows, each with 54 feature columns and 1 tar
 * `Hillshade_Noon`: Hillshade index at noon, summer solstice
 * `Hillshade_3pm`: Hillshade index at 3pm, summer solstice
 * `Horizontal_Distance_To_Fire_Points`: Horizontal dist to nearest wildfire ignition points, meters
-* `Wilderness_Area_x`: Wilderness area designation (4 columns)
-* `Soil_Type_x`: Soil Type designation (40 columns)
+* `Wilderness_Area_x`: Wilderness area designation (3 columns)
+* `Soil_Type_x`: Soil Type designation (39 columns)
 * `Cover_Type`: 1 for cottonwood/willow, 0 for ponderosa pine
 
 This is also an imbalanced dataset, since cottonwood/willow trees are relatively rare in this forest:
@@ -426,7 +426,7 @@ Preprocess the full training set and test set appropriately, then evaluate the f
 
 This process should be fairly familiar by now. In the cell below, use the variable `df` (that has already been created) in order to create `X` and `y`, then training and test sets using `train_test_split` ([documentation here](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.train_test_split.html)).
 
-We'll use a random state of 42 and `stratify=y` (to ensure an even balance of fraud/not fraud rows) in the train-test split. Recall that the target is `Cover_Type`.
+We'll use a random state of 42 and `stratify=y` (to ensure an even balance of tree types) in the train-test split. Recall that the target is `Cover_Type`.
 
 
 ```python
@@ -453,8 +453,8 @@ assert X_train.shape[0] == y_train.shape[0] and X_train.shape[0] == 28875
 # X and y testing data should have the same number of rows
 assert X_test.shape[0] == y_test.shape[0] and X_test.shape[0] == 9626
 
-# Both X should have 33 columns
-assert X_train.shape[1] == X_test.shape[1] and X_train.shape[1] == 54
+# Both X should have 52 columns
+assert X_train.shape[1] == X_test.shape[1] and X_train.shape[1] == 52
 
 # Both y should have 1 column
 assert len(y_train.shape) == len(y_test.shape) and len(y_train.shape) == 1
@@ -546,11 +546,11 @@ baseline_log_loss
 
 
 
-    0.17116279160065645
+    0.1723165500699139
 
 
 
-Ok, so we are getting the `ConvergenceWarning`s we expected, and log loss of around 0.171 with our baseline model.
+Ok, so we are getting the `ConvergenceWarning`s we expected, and log loss of around 0.172 with our baseline model.
 
 Is that a "good" log loss? That's hard to say — log loss is not particularly interpretable. 
 
@@ -573,7 +573,7 @@ log_loss(y_train, np.zeros(len(y_train)))
 
 Loss is a metric where lower is better, so our baseline model is clearly an improvement over just guessing the majority class every time.
 
-Even though it is difficult to interpret, the 0.171 value will be a useful baseline as we continue modeling, to see if we are actually making improvements or just getting slightly better performance by chance.
+Even though it is difficult to interpret, the 0.172 value will be a useful baseline as we continue modeling, to see if we are actually making improvements or just getting slightly better performance by chance.
 
 We will also use other metrics at the last step in order to describe the final model's performance in a more user-friendly way.
 
@@ -720,7 +720,7 @@ for fold, (train_index, val_index) in enumerate(kfold.split(X_train, y_train)):
 
 
 
-    0.17116279160065645
+    0.1723165500699139
 
 
 
@@ -732,8 +732,8 @@ print(baseline_neg_log_loss_cv)
 print(kfold_scores)
 ```
 
-    [-0.17158243 -0.17213642 -0.1629862  -0.17678272 -0.17232618]
-    [-0.17158243 -0.17213642 -0.1629862  -0.17678272 -0.17232618]
+    [-0.17160028 -0.174577   -0.16303751 -0.17948587 -0.1728821 ]
+    [-0.17160028 -0.174577   -0.16303751 -0.17948587 -0.1728821 ]
 
 
 So, what is the point of doing it this way, instead of the much-shorter `cross_val_score` approach?
@@ -742,8 +742,8 @@ So, what is the point of doing it this way, instead of the much-shorter `cross_v
 
 Therefore we can apply these preprocessing techniques appropriately:
 
-1. Fit a `SMOTE` object and transform only the training subset
-2. Fit a `StandardScaler` object on the training subset (not the full training data) and transform both the train and test subsets
+1. Fit a `StandardScaler` object on the training subset (not the full training data) and transform both the train and test subsets
+2. Fit a `SMOTE` object and transform only the training subset
 
 ### Writing a Custom Cross Validation Function with `StratifiedKFold`
 
@@ -759,8 +759,9 @@ from sklearn.preprocessing import StandardScaler
 from imblearn.over_sampling import SMOTE
 
 def custom_cross_val_score(estimator, X, y):
-    # Create a list to hold the score from each fold
-    kfold_scores = np.ndarray(5)
+    # Create a list to hold the scores from each fold
+    kfold_train_scores = np.ndarray(5)
+    kfold_val_scores = np.ndarray(5)
 
     # Instantiate a splitter object and loop over its result
     kfold = StratifiedKFold(n_splits=5)
@@ -785,21 +786,23 @@ def custom_cross_val_score(estimator, X, y):
         temp_model = clone(estimator)
         temp_model.fit(X_t_oversampled, y_t_oversampled)
         
-        # Evaluate the provided model on the validation subset
-        neg_log_loss_score = neg_log_loss(temp_model, X_val_scaled, y_val)
-        kfold_scores[fold] = neg_log_loss_score
+        # Evaluate the provided model on the train and validation subsets
+        neg_log_loss_score_train = neg_log_loss(temp_model, X_t_oversampled, y_t_oversampled)
+        neg_log_loss_score_val = neg_log_loss(temp_model, X_val_scaled, y_val)
+        kfold_train_scores[fold] = neg_log_loss_score_train
+        kfold_val_scores[fold] = neg_log_loss_score_val
         
-    return kfold_scores
+    return kfold_train_scores, kfold_val_scores
 
 model_with_preprocessing = LogisticRegression(random_state=42, class_weight={1: 0.28})
-preprocessed_neg_log_loss_cv = custom_cross_val_score(model_with_preprocessing, X_train, y_train)
+preprocessed_train_scores, preprocessed_neg_log_loss_cv = custom_cross_val_score(model_with_preprocessing, X_train, y_train)
 - (preprocessed_neg_log_loss_cv.mean())
 ```
 
 
 
 
-    0.13235904968769785
+    0.132358995512103
 
 
 
@@ -822,8 +825,469 @@ print(-baseline_neg_log_loss_cv.mean())
 print(-preprocessed_neg_log_loss_cv.mean())
 ```
 
-    0.17116279160065645
-    0.13235904968769785
+    0.1723165500699139
+    0.132358995512103
 
 
 Looks like our preprocessing with `StandardScaler` and `SMOTE` has provided some improvement over the baseline! Let's move on to Step 4.
+
+## 4. Build and Evaluate Additional Logistic Regression Models
+
+Now that we have applied appropriate preprocessing steps to our data in our custom cross validation function, we can reuse that function to test multiple different `LogisticRegression` models.
+
+For each model iteration, make sure you specify `class_weight={1: 0.28}`, because this aligns with the weighting created by our `SMOTE` process.
+
+### Where to Next?
+
+One of the first questions to ask when you start iterating on any model is: ***are we overfitting***? Many of the models you will learn during this course will have built-in functionality to reduce overfitting.
+
+To determine whether we are overfitting, let's examine the training scores vs. the validation scores from our existing modeling process:
+
+
+```python
+print("Train:     ", -preprocessed_train_scores)
+print("Validation:", -preprocessed_neg_log_loss_cv)
+```
+
+    Train:      [0.29227141 0.28801243 0.29282026 0.28652204 0.28910185]
+    Validation: [0.13067576 0.13636961 0.12628191 0.13715658 0.13131112]
+
+
+Remember that these are loss metrics, meaning lower is better. Are we overfitting?
+
+
+```python
+"""
+While SMOTE makes it somewhat challenging to compare these numbers directly,
+it does not appear that we are overfitting. Overfitting would mean getting
+significantly better scores on the training data than the validation data
+
+We are getting better metrics on the validation data (where synthetic
+examples have not been added) so it does not appear that we are overfitting
+"""
+```
+
+It's actually possible that we are underfitting due to too high of regularization. Remember that `LogisticRegression` from scikit-learn has regularization by default
+
+
+```python
+model_with_preprocessing.get_params()
+```
+
+
+
+
+    {'C': 1.0,
+     'class_weight': {1: 0.28},
+     'dual': False,
+     'fit_intercept': True,
+     'intercept_scaling': 1,
+     'l1_ratio': None,
+     'max_iter': 100,
+     'multi_class': 'auto',
+     'n_jobs': None,
+     'penalty': 'l2',
+     'random_state': 42,
+     'solver': 'lbfgs',
+     'tol': 0.0001,
+     'verbose': 0,
+     'warm_start': False}
+
+
+
+That first key-value pair, `'C': 1.0`, specifies the regularization strength. As is noted in the [scikit-learn `LogisticRegression` docs](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LogisticRegression.html), `C` is:
+
+> Inverse of regularization strength; must be a positive float. Like in support vector machines, smaller values specify stronger regularization.
+
+In general if you are increasing `C` you want to increase it by orders of magnitude. I.e. not increasing it to 1.1, but rather increasing it to 1e3, 1e5, etc.
+
+### Reducing Regularization
+
+In the cell below, instantiate a `LogisticRegression` model with lower regularization (i.e. higher `C`), along with `random_state=42` and `class_weight={1: 0.28}`. Call this model `model_less_regularization`.
+
+
+```python
+
+model_less_regularization = LogisticRegression(
+    random_state=42,
+    class_weight={1: 0.28},
+    C=1e5
+)
+```
+
+This code cell double-checks that the model was created correctly:
+
+
+```python
+
+# Check variable type
+assert type(model_less_regularization) == LogisticRegression
+
+# Check params
+assert model_less_regularization.get_params()["random_state"] == 42
+assert model_less_regularization.get_params()["class_weight"] == {1: 0.28}
+assert model_less_regularization.get_params()["C"] != 1.0
+```
+
+Now, evaluate that model using `custom_cross_val_score`. Recall that `custom_cross_val_score` takes 3 arguments: `estimator`, `X`, and `y`. In this case, `estimator` should be `model_less_regularization`, `X` should be `X_train`, and `y` should be `y_train`.
+
+
+```python
+less_regularization_train_scores, less_regularization_val_scores = custom_cross_val_score(
+    model_less_regularization,
+    X_train,
+    y_train
+)
+
+print("Previous Model")
+print("Train average:     ", -preprocessed_train_scores.mean())
+print("Validation average:", -preprocessed_neg_log_loss_cv.mean())
+print("Current Model")
+print("Train average:     ", -less_regularization_train_scores.mean())
+print("Validation average:", -less_regularization_val_scores.mean())
+```
+
+    Previous Model
+    Train average:      0.28974560105233593
+    Validation average: 0.132358995512103
+    Current Model
+    Train average:      0.2895752558726792
+    Validation average: 0.1323443569205182
+
+
+Your answers will vary somewhat depending on the value of `C` that you chose, but in general you should see a slight improvement, from something like 0.132358 validation average to 0.132344 (improvement of .000014). Not a massive difference but it is an improvement!
+
+### Alternative Solver
+
+Right now we are using the default solver and type of regularization penalty:
+
+
+```python
+print("solver:", model_less_regularization.get_params()["solver"])
+print("penalty:", model_less_regularization.get_params()["penalty"])
+```
+
+    solver: lbfgs
+    penalty: l2
+
+
+What if we want to try a different kind of regularization penalty?
+
+From the docs:
+
+> * ‘newton-cg’, ‘lbfgs’, ‘sag’ and ‘saga’ handle L2 or no penalty
+> * ‘liblinear’ and ‘saga’ also handle L1 penalty
+> * ‘saga’ also supports ‘elasticnet’ penalty
+
+In other words, the only models that support L1 or elastic net penalties are `liblinear` and `saga`. `liblinear` is going to be quite slow with the size of our dataset, so let's use `saga`.
+
+In the cell below, create a model that uses `solver="saga"` and `penalty="elasticnet"`. Then use the `l1_ratio` argument to specify the mixing of L1 and L2 regularization. You want a value greater than zero (zero would just mean using L2 regularization) and less than one (one would mean using just L1 regularization).
+
+Remember to also specify `random_state=42`, `class_weight={1: 0.28}`, and `C` equals the value you previously used.
+
+
+```python
+model_alternative_solver = LogisticRegression(
+    random_state=42,
+    class_weight={1: 0.28},
+    C=1e5,
+    solver="saga",
+    penalty="elasticnet",
+    l1_ratio=0.5
+)
+
+alternative_solver_train_scores, alternative_solver_val_scores = custom_cross_val_score(
+    model_alternative_solver,
+    X_train,
+    y_train
+)
+
+print("Previous Model (Less Regularization)")
+print("Train average:     ", -less_regularization_train_scores.mean())
+print("Validation average:", -less_regularization_val_scores.mean())
+print("Current Model")
+print("Train average:     ", -alternative_solver_train_scores.mean())
+print("Validation average:", -alternative_solver_val_scores.mean())
+```
+
+    //anaconda3/envs/learn-env/lib/python3.8/site-packages/sklearn/linear_model/_sag.py:329: ConvergenceWarning: The max_iter was reached which means the coef_ did not converge
+      warnings.warn("The max_iter was reached which means "
+    //anaconda3/envs/learn-env/lib/python3.8/site-packages/sklearn/linear_model/_sag.py:329: ConvergenceWarning: The max_iter was reached which means the coef_ did not converge
+      warnings.warn("The max_iter was reached which means "
+    //anaconda3/envs/learn-env/lib/python3.8/site-packages/sklearn/linear_model/_sag.py:329: ConvergenceWarning: The max_iter was reached which means the coef_ did not converge
+      warnings.warn("The max_iter was reached which means "
+    //anaconda3/envs/learn-env/lib/python3.8/site-packages/sklearn/linear_model/_sag.py:329: ConvergenceWarning: The max_iter was reached which means the coef_ did not converge
+      warnings.warn("The max_iter was reached which means "
+
+
+    Previous Model (Less Regularization)
+    Train average:      0.2895752558726792
+    Validation average: 0.1323443569205182
+    Current Model
+    Train average:      0.29297684099860494
+    Validation average: 0.13604493761082842
+
+
+    //anaconda3/envs/learn-env/lib/python3.8/site-packages/sklearn/linear_model/_sag.py:329: ConvergenceWarning: The max_iter was reached which means the coef_ did not converge
+      warnings.warn("The max_iter was reached which means "
+
+
+Most likely you started getting `ConvergenceWarning`s again, even though we are scaling the data inside of `custom_cross_val_score`. When you get a convergence warning in a case like this, you want to modify the `tol` and/or `max_iter` parameters.
+
+### Adjusting Gradient Descent Parameters
+
+If you are getting good results (good metrics) but are still getting a `ConvergenceWarning`, consider increasing the tolerance (`tol` argument). The tolerance specifies how close to zero the gradient must be in order to stop taking additional steps. It's possible that your model is finding a gradient that is close enough to zero, but slightly above the default tolerance, if everything otherwise looks good.
+
+In this case, we are getting slightly worse metrics on both the train and the validation data (compared to a different solver strategy), so increasing the number of iterations (`max_iter`) seems like a better strategy. Essentially this is allowing the gradient descent algorithm to take more steps as it tries to find an optimal solution.
+
+In the cell below, create a model called `model_more_iterations` that has the same hyperparameters as `model_alternative_solver`, with the addition of an increased `max_iter`. You'll need to increase `max_iter` significantly to a number in the thousands.
+
+**Note:** As you increase `max_iter`, it is normal for the execution time of fitting the model to increase. The following cell may take up to several minutes to execute. Try to be patient with this exercise! If this step times out, you can just read on ahead.
+
+
+```python
+model_more_iterations = LogisticRegression(
+    random_state=42,
+    class_weight={1: 0.28},
+    C=1e5,
+    solver="saga",
+    penalty="elasticnet",
+    l1_ratio=0.5,
+    max_iter=2000
+)
+
+more_iterations_train_scores, more_iterations_val_scores = custom_cross_val_score(
+    model_more_iterations,
+    X_train,
+    y_train
+)
+
+print("Previous Best Model (Less Regularization)")
+print("Train average:     ", -less_regularization_train_scores.mean())
+print("Validation average:", -less_regularization_val_scores.mean())
+print("Previous Model with This Solver")
+print("Train average:     ", -alternative_solver_train_scores.mean())
+print("Validation average:", -alternative_solver_val_scores.mean())
+print("Current Model")
+print("Train average:     ", -more_iterations_train_scores.mean())
+print("Validation average:", -more_iterations_val_scores.mean())
+```
+
+    Previous Best Model (Less Regularization)
+    Train average:      0.2895752558726792
+    Validation average: 0.1323443569205182
+    Previous Model with This Solver
+    Train average:      0.29297684099860494
+    Validation average: 0.13604493761082842
+    Current Model
+    Train average:      0.2897322023187443
+    Validation average: 0.1324190702822845
+
+
+The results you got are most likely around 0.13241, whereas the previous model was around 0.13234. In other words, even after waiting all that time, we are getting 0.00007 worse log loss with this solver.
+
+This is a fairly typical experience when hyperparameter tuning! Often the default hyperparameters are the default because they work best in the most situations. This is especially true of logistic regression, which has relatively few hyperparameters. Once we get to more complex models, there are more "levers to pull" (hyperparameters to adjust) so it is more likely that we'll improve performance by deviating from the default.
+
+Let's declare the `model_less_regularization` to be our best model, and move on to the final evaluation phase.
+
+## 5. Choose and Evaluate a Final Model
+
+
+```python
+final_model = model_less_regularization
+```
+
+In order to evaluate our final model, we need to preprocess the full training and test data, fit the model on the full training data, and evaluate it on the full test data. Initially we'll continue to use log loss for the evaluation step.
+
+### Preprocessing the Full Dataset
+
+
+```python
+
+# Instantiate StandardScaler
+scaler = StandardScaler()
+# Fit and transform X_train
+X_train_scaled = scaler.fit_transform(X_train)
+# Transform X_test
+X_test_scaled = scaler.transform(X_test)
+
+# Instantiate SMOTE with random_state=42 and sampling_strategy=0.28
+sm = SMOTE(random_state=42, sampling_strategy=0.28)
+# Fit and transform X_train_scaled and y_train using sm
+X_train_oversampled, y_train_oversampled = sm.fit_resample(X_train_scaled, y_train)
+```
+
+### Fitting the Model on the Full Training Data
+
+
+```python
+final_model.fit(X_train_oversampled, y_train_oversampled)
+```
+
+
+
+
+    LogisticRegression(C=100000.0, class_weight={1: 0.28}, random_state=42)
+
+
+
+### Evaluating the Model on the Test Data
+
+#### Log Loss
+
+
+```python
+log_loss(y_test, final_model.predict_proba(X_test_scaled))
+```
+
+
+
+
+    0.13031294393913376
+
+
+
+Great! We are getting slightly better performance when we train the model with the full training set, compared to the average cross-validated performance. This is typical since models tend to perform better with more training data.
+
+This model has improved log loss compared to our initial baseline model, which had about 0.172.
+
+But we're not quite done here!
+
+If we wanted to present this forest cover classification model to non-technical stakeholders, log loss would be a confusing choice. Let's compute some other metrics that tell the story of our model's performance in a more interpretable way.
+
+#### Accuracy
+
+Although we noted the issues with accuracy as a metric on unbalanced datasets, accuracy is a very intuitive metric. Recall that we would expect an accuracy of about 0.928651 if we identified every cell as class 0. What accuracy do we get with our new model?
+
+(Note that we used `.predict_proba` above, but accuracy uses `.predict`)
+
+
+```python
+
+from sklearn.metrics import accuracy_score
+
+accuracy_score(y_test, final_model.predict(X_test_scaled))
+```
+
+
+
+
+    0.9456679825472678
+
+
+
+In other words, our model correctly identifies the type of forest cover about 94.6% of the time, whereas always guessing the majority class (ponderosa pine) would only be accurate about 92.9% of the time.
+
+#### Precision
+
+If we always chose the majority class, we would expect a precision of 0, since we would never identify any "true positives". What is the precision of our final model? Use `precision_score` from scikit-learn ([documentation here](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.precision_score.html)).
+
+
+```python
+
+# Import the relevant function
+from sklearn.metrics import precision_score
+
+# Display the precision score
+precision_score(y_test, final_model.predict(X_test_scaled))
+```
+
+
+
+
+    0.6659919028340081
+
+
+
+In other words, if our model labels a given cell of forest as class 1, there is about a 66.6% chance that it is actually class 1 (cottonwood/willow) and about a 33.4% chance that it is actually class 0 (ponderosa pine).
+
+#### Recall
+
+Again, if we always chose the majority class, we would expect a recall of 0. What is the recall of our final model? Use `recall_score` from scikit-learn ([documentation here](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.recall_score.html)).
+
+
+```python
+
+# Import the relevant function
+from sklearn.metrics import recall_score
+
+# Display the recall score
+recall_score(y_test, final_model.predict(X_test_scaled))
+```
+
+
+
+
+    0.47889374090247455
+
+
+
+In other words, if a given cell of forest is actually class 1, there is about a 47.9% chance that our model will correctly label it as class 1 (cottonwood/willow) and about a 52.1% chance that our model will incorrectly label it as class 0 (ponderosa pine).
+
+#### Interpretation
+
+Depending on the stakeholder, you most likely want to report just precision or just recall. Try to understand their business case:
+
+* If false positives are a bigger problem (labeled cottonwood/willow when it's really ponderosa pine), precision is the important metric to report
+* If false negatives are a bigger problem (labeled ponderosa pine when it's really cottonwood/willow), recall is the important metric to report
+
+If those problems have truly equal importance, you could report an f1-score instead, although this is somewhat more difficult for the average person to interpret.
+
+#### BONUS: Adjusting the Decision Threshold
+
+If either of those problems is important enough that it outweighs overall accuracy, you could also adjust the decision threshold of your final model to improve the metric that matters most. Let's say that it's important to improve the recall score — that we want to be able to correctly label more of the cottonwood/willow trees as cottonwood/willow trees, even if that means accidentally labeling more ponderosa pine as cottonwood/willow incorrectly.
+
+Then we can use `.predict_proba` to err on the side of the positive class. Let's use an exaggerated example, which assumes that false negatives are a very significant problem. Instead of using the default 50% threshold (where a probability over 0.5 is classified as positive) let's say that if there is greater than a 1% chance it's positive, we classify it as positive:
+
+(If the opposite issue were the case — it's very important that every area classified as 1 is actually cottonwood/willow — you would want the threshold to be higher than 50% rather than lower than 50%.)
+
+
+```python
+
+def final_model_func(model, X):
+    """
+    Custom function to predict probability of
+    cottonwood/willow. If the model says there
+    is >1% chance, we label it as class 1
+    """
+    probs = model.predict_proba(X)[:,1]
+    return [int(prob > 0.01) for prob in probs]
+
+# Calculate predictions with adjusted threshold and
+# display proportions of predictions
+threshold_adjusted_probs = pd.Series(final_model_func(final_model, X_test_scaled))
+threshold_adjusted_probs.value_counts(normalize=True)
+```
+
+
+
+
+    0    0.586433
+    1    0.413567
+    dtype: float64
+
+
+
+So, now we are predicting that everything over a 1% chance of being class 1 as class 1, which means that we're classifying about 58.6% of the records as class 0 and 41.4% of the records as class 1.
+
+
+```python
+print("Accuracy:", accuracy_score(y_test, threshold_adjusted_probs))
+print("Recall:  ", recall_score(y_test, threshold_adjusted_probs))
+```
+
+    Accuracy: 0.6565551630999377
+    Recall:   0.9912663755458515
+
+
+This means that we are able to identify 99.1% of the true positives (i.e. 99.1% of the cottonwood/willow cells are identified). However this comes at a cost; our overall accuracy is now 65.7% instead of over 90%.
+
+So we are classifying over 40% of the cells as cottonwood/willow, even though fewer than 10% of the cells are actually that category, in order to miss as few true positives as possible. Even though this seems fairly extreme, our model is still better than just choosing class 1 every time (that model would have about 7% accuracy).
+
+This kind of model might be useful if there is some kind of treatment needed for cottonwood/willow trees, but your organization only has the resources to visit fewer than half of the study areas. This model would allow them to visit 41% of the areas and successfully treat over 99% of the cottonwood/willow trees.
+
+You can also imagine a less-drastic version of this threshold adjusting, where you trade off a marginal improvement in precision or recall for a marginal reduction in accuracy. Visually inspecting the precision-recall curve ([documentation here](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.plot_precision_recall_curve.html)) can help you choose the threshold based on what you want to optimize.
+
+## Summary
+
+In this lab, you completed an end-to-end machine learning modeling process with logistic regression on an imbalanced dataset. First you built and evaluated a baseline model. Next you wrote a custom cross validation function in order to use SMOTE resampling appropriately (without needing an `imblearn` pipeline). After that, you tuned the model through adjusting the regularization strength and the gradient descent hyperparameters. Finally, you evaluated your final model on log loss as well as more user-friendly metrics.
