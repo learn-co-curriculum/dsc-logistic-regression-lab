@@ -15,7 +15,7 @@ You will be able to:
 
 ## Your Task: Complete an End-to-End ML Process with Logistic Regression on the Forest Cover Dataset
 
-![forest road](images/forest_road.jpg)
+![forest road](https://curriculum-content.s3.amazonaws.com/data-science/images/forest_road.jpg)
 
 <span>Photo by <a href="https://unsplash.com/@von_co?utm_source=unsplash&amp;utm_medium=referral&amp;utm_content=creditCopyText">Ivana Cajina</a> on <a href="https://unsplash.com/s/photos/forest-satellite?utm_source=unsplash&amp;utm_medium=referral&amp;utm_content=creditCopyText">Unsplash</a></span>
 
